@@ -103,6 +103,21 @@ EOS
     @selectors = []
     @selector_label_width = 0
 
+    if $config[:account_selector]
+      @account_selector =
+        HorizontalSelector.new "Account:", AccountManager.user_accounts + [nil], AccountManager.user_emails + ["Customized"]
+
+      if @header["From"] =~ /<?(\S+@(\S+?))>?$/
+        @account_selector.set_to AccountManager.account_for($1)
+        @account_user = ""
+      else
+        @account_selector.set_to nil
+        @account_user = @header["From"]
+      end
+
+      add_selector @account_selector
+    end
+
     @crypto_selector =
       if CryptoManager.have_crypto?
         HorizontalSelector.new "Crypto:", [:none] + CryptoManager::OUTGOING_MESSAGE_OPERATIONS.keys, ["None"] + CryptoManager::OUTGOING_MESSAGE_OPERATIONS.values
@@ -151,6 +166,8 @@ EOS
   def edit_subject; edit_field "Subject" end
 
   def edit_message
+    old_from = @header["From"] if @account_selector
+
     @file = Tempfile.new "sup.#{self.class.name.gsub(/.*::/, '').camel_to_hyphy}"
     @file.puts format_headers(@header - NON_EDITABLE_HEADERS).first
     @file.puts
@@ -167,6 +184,12 @@ EOS
 
     header, @body = parse_file @file.path
     @header = header - NON_EDITABLE_HEADERS
+
+    if @account_selector and @header["From"] != old_from
+      @account_user = @header["From"]
+      @account_selector.set_to nil
+    end
+
     handle_new_text @header, @body
     update
 
@@ -231,6 +254,7 @@ protected
     if curpos < @selectors.length
       @selectors[curpos].roll_left
       buffer.mark_dirty
+      update if @account_selector
     else
       col_left
     end
@@ -240,6 +264,7 @@ protected
     if curpos < @selectors.length
       @selectors[curpos].roll_right
       buffer.mark_dirty
+      update if @account_selector
     else
       col_right
     end
@@ -251,6 +276,11 @@ protected
   end
 
   def update
+    if @account_selector
+      account = @account_selector.val
+      @header["From"] = account && account.full_address || @account_user
+    end
+
     regen_text
     buffer.mark_dirty if buffer
   end
@@ -455,6 +485,12 @@ protected
       if contacts
         text = contacts.map { |s| s.full_address }.join(", ")
         @header[field] = parse_header field, text
+
+        if @account_selector and field == "From"
+          @account_user = @header["From"]
+          @account_selector.set_to nil
+        end
+
         update
       end
     end
