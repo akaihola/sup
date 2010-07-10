@@ -76,7 +76,7 @@ EOS
     ## otherwise, try and find an account somewhere in the list of to's
     ## and cc's.
     elsif(b = (@m.to + @m.cc).find { |p| AccountManager.is_account? p })
-      b
+      AccountManager.account_for(b.email)
     ## if all else fails, use the default
     else
       AccountManager.default_account
